@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestion Stock & Ventes</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 0; background: #f8f9fb; color: #2c3e50; }
+    header { background: #2c3e50; color: #fff; text-align: center; padding: 15px; font-size: 22px; }
+    nav { display: flex; justify-content: center; background: #34495e; padding: 10px; flex-wrap: wrap; }
+    nav button { background: #7f8c8d; color: #fff; border: none; padding: 10px 20px; margin: 5px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+    nav button:hover, nav button.active { background: #1abc9c; }
+    .container { display: none; padding: 20px; }
+    .container.active { display: block; }
+    .section { background: #fff; padding: 15px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 0 6px rgba(0,0,0,0.05); }
+    h2 { margin-top: 0; }
+    input, select, button { padding: 8px; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    table th, table td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+    table th { background: #ecf0f1; }
+    .total-box { margin-top: 10px; padding: 10px; background: #ecf0f1; border-radius: 6px; font-weight: bold; }
+    .btn { padding: 8px 12px; border: none; cursor: pointer; border-radius: 4px; }
+    .btn-primary { background: #2980b9; color: #fff; }
+    .btn-danger { background: #c0392b; color: #fff; }
+    .btn-excel { background: #27ae60; color: #fff; }
+    .btn-dark { background: #2c3e50; color: #fff; }
+    .search-box { margin: 10px 0; }
+    .panier { margin-top: 10px; }
+    .recu { padding: 10px; border: 1px dashed #333; margin-top: 10px; background: #fff; }
+
+    /* Alerte stock */
+    .low-stock { background-color: #f39c12 !important; color: #fff; font-weight: bold; }
+    .critical-stock { background-color: #e74c3c !important; color: #fff; font-weight: bold; }
+
+    /* Mode sombre */
+    body.dark { background: #1e1e1e; color: #f1f1f1; }
+    body.dark header { background: #111; }
+    body.dark nav { background: #222; }
+    body.dark nav button { background: #555; }
+    body.dark nav button.active { background: #16a085; }
+    body.dark .section { background: #2b2b2b; }
+    body.dark table th { background: #444; color: #fff; }
+    body.dark .total-box { background: #444; }
+  </style>
+</head>
+<body>
+  <header>Gestion Stock & Ventes</header>
+  <nav>
+    <button class="tab-btn active" data-target="boisson">Boisson</button>
+    <button class="tab-btn" data-target="supermarche">Supermarché</button>
+    <button class="tab-btn" data-target="ventes">Ventes</button>
+    <button class="tab-btn" data-target="rapport">Rapport</button>
+    <button class="btn btn-danger" onclick="resetData()">Réinitialiser</button>
+    <button class="btn btn-primary" onclick="exportAllPDF()">Exporter PDF</button>
+    <button class="btn btn-dark" onclick="toggleDarkMode()">🌙 Mode Sombre</button>
+  </nav>
+
+  <!-- STOCK BOISSON -->
+  <div id="boisson" class="container active">
+    <div class="section">
+      <h2>Stock Boisson</h2>
+      <input type="text" id="b-name" placeholder="Nom produit">
+      <input type="number" id="b-price" placeholder="Prix unitaire (FCFA)">
+      <input type="number" id="b-pricegros" placeholder="Prix gros (FCFA)">
+      <input type="number" id="b-qty" placeholder="Quantité">
+      <input type="text" id="b-category" placeholder="Catégorie">
+      <button class="btn btn-primary" onclick="addProduct('boisson')">Ajouter</button>
+      <button class="btn btn-excel" onclick="exportExcel('boisson')">Exporter Excel</button>
+      <div class="search-box">
+        <input type="text" id="b-search" placeholder="Rechercher..." onkeyup="searchTable('boisson')">
+      </div>
+      <table id="boisson-stock">
+        <thead><tr><th>Produit</th><th>Prix</th><th>Quantité</th><th>Catégorie</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="total-box" id="boisson-total">Total Stock: 0</div>
+    </div>
+    <div class="section">
+      <h2>Inventaire Boisson</h2>
+      <table id="boisson-inventaire">
+        <thead><tr><th>Nom</th><th>Catégorie</th><th>Prix Unitaire</th><th>Prix Gros</th><th>Quantité</th><th>Valeur Totale</th><th>Modifier</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="total-box" id="boisson-inventaire-total">Valeur Totale Inventaire: 0 FCFA</div>
+    </div>
+  </div>
+
+  <!-- STOCK SUPERMARCHE -->
+  <div id="supermarche" class="container">
+    <div class="section">
+      <h2>Stock Supermarché</h2>
+      <input type="text" id="s-name" placeholder="Nom produit">
+      <input type="number" id="s-price" placeholder="Prix unitaire (FCFA)">
+      <input type="number" id="s-pricegros" placeholder="Prix gros (FCFA)">
+      <input type="number" id="s-qty" placeholder="Quantité">
+      <input type="text" id="s-category" placeholder="Catégorie">
+      <button class="btn btn-primary" onclick="addProduct('supermarche')">Ajouter</button>
+      <button class="btn btn-excel" onclick="exportExcel('supermarche')">Exporter Excel</button>
+      <div class="search-box">
+        <input type="text" id="s-search" placeholder="Rechercher..." onkeyup="searchTable('supermarche')">
+      </div>
+      <table id="supermarche-stock">
+        <thead><tr><th>Produit</th><th>Prix</th><th>Quantité</th><th>Catégorie</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="total-box" id="supermarche-total">Total Stock: 0</div>
+    </div>
+    <div class="section">
+      <h2>Inventaire Supermarché</h2>
+      <table id="supermarche-inventaire">
+        <thead><tr><th>Nom</th><th>Catégorie</th><th>Prix Unitaire</th><th>Prix Gros</th><th>Quantité</th><th>Valeur Totale</th><th>Modifier</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="total-box" id="supermarche-inventaire-total">Valeur Totale Inventaire: 0 FCFA</div>
+    </div>
+  </div>
+
+  <!-- VENTES -->
+  <div id="ventes" class="container">
+    <div class="section">
+      <h2>Caisse - Ventes</h2>
+      <div class="search-box">
+        <input type="text" id="vente-search" placeholder="Rechercher produit..." onkeyup="searchVente()">
+      </div>
+      <select id="vente-produit"></select>
+      <input type="number" id="vente-qty" placeholder="Quantité">
+      <select id="vente-mode">
+        <option>Espèces</option>
+        <option>Orange Money</option>
+        <option>Wave</option>
+      </select>
+      <button class="btn btn-primary" onclick="ajouterPanier()">Ajouter au Panier</button>
+      <div class="panier">
+        <h3>Panier</h3>
+        <table id="panier-table">
+          <thead><tr><th>Produit</th><th>Qté</th><th>Prix Unitaire</th><th>Total</th><th>Action</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="total-box" id="panier-total">Total TTC: 0 FCFA</div>
+        <button class="btn btn-primary" onclick="validerVente()">Valider Vente</button>
+        <button class="btn btn-primary" onclick="imprimerRecu()">Imprimer Reçu</button>
+        <div class="recu" id="recu"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RAPPORT -->
+  <div id="rapport" class="container">
+    <div class="section">
+      <h2>Rapport des Ventes</h2>
+      <input type="text" id="search-rapport" placeholder="Rechercher..." onkeyup="searchRapport()">
+      <table id="rapport-table">
+        <thead><tr><th>Date</th><th>Produit</th><th>Qté</th><th>Prix Unitaire</th><th>Total</th><th>Mode Paiement</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="total-box" id="rapport-total">Total Ventes: 0 FCFA</div>
+    </div>
+  </div>
+
+  <script>
+    const data = JSON.parse(localStorage.getItem('stockData')) || { boisson: { stock: [] }, supermarche: { stock: [] }, ventes: [] };
+    let panier = [];
+
+    function saveData() { localStorage.setItem('stockData', JSON.stringify(data)); }
+    function resetData() { if (confirm("Réinitialiser toutes les données ?")) { localStorage.removeItem('stockData'); location.reload(); } }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.container').forEach(c => c.classList.remove('active'));
+      document.getElementById(btn.dataset.target).classList.add('active');
+      updateUI('boisson'); updateUI('supermarche'); updatePanier(); updateRapport();
+    }));
+
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark');
+      localStorage.setItem('darkMode', document.body.classList.contains('dark'));
+    }
+
+    function sortStock(type) {
+      data[type].stock.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+    }
+
+    function addProduct(type) {
+      const p = type[0];
+      const name = document.getElementById(p + '-name').value.trim();
+      const price = parseFloat(document.getElementById(p + '-price').value);
+      const pricegros = parseFloat(document.getElementById(p + '-pricegros').value);
+      const qty = parseInt(document.getElementById(p + '-qty').value);
+      const category = document.getElementById(p + '-category').value.trim();
+      if (!name || isNaN(price) || isNaN(pricegros) || isNaN(qty)) return alert('Champs manquants');
+      const existing = data[type].stock.find(p => p.name === name);
+      if (existing) { existing.qty += qty; existing.price = price; existing.pricegros = pricegros; existing.category = category; }
+      else data[type].stock.push({ name, price, pricegros, qty, category });
+      sortStock(type);
+      saveData(); updateUI(type); remplirProduitsVente();
+    }
+
+    function updateUI(type) {
+      const stockTable = document.querySelector(`#${type}-stock tbody`);
+      const inventaireTable = document.querySelector(`#${type}-inventaire tbody`);
+      stockTable.innerHTML = ''; inventaireTable.innerHTML = '';
+      let totalStock = 0, totalInventaire = 0;
+      data[type].stock.forEach((p, i) => {
+        totalStock += p.qty; const valeur = p.price * p.qty; totalInventaire += valeur;
+
+        // Déterminer la classe d'alerte
+        let stockClass = '';
+        if (p.qty <= 5) stockClass = 'critical-stock';
+        else if (p.qty <= 10) stockClass = 'low-stock';
+
+        stockTable.innerHTML += `<tr class="${stockClass}"><td>${p.name}</td><td>${p.price}</td><td>${p.qty}</td><td>${p.category}</td><td><button onclick="deleteProduct('${type}','${p.name}')">X</button></td></tr>`;
+        inventaireTable.innerHTML += `<tr class="${stockClass}">
+          <td contenteditable="true" onblur="editCell('${type}',${i},'name',this.innerText)">${p.name}</td>
+          <td contenteditable="true" onblur="editCell('${type}',${i},'category',this.innerText)">${p.category}</td>
+          <td contenteditable="true" onblur="editCell('${type}',${i},'price',this.innerText)">${p.price}</td>
+          <td contenteditable="true" onblur="editCell('${type}',${i},'pricegros',this.innerText)">${p.pricegros}</td>
+          <td contenteditable="true" onblur="editCell('${type}',${i},'qty',this.innerText)">${p.qty}</td>
+          <td>${valeur} FCFA</td>
+          <td><button onclick="deleteProduct('${type}','${p.name}')">X</button></td>
+        </tr>`;
+      });
+      document.getElementById(`${type}-total`).textContent = `Total Stock: ${totalStock}`;
+      document.getElementById(`${type}-inventaire-total`).textContent = `Valeur Totale Inventaire: ${totalInventaire} FCFA`;
+    }
+
+    function editCell(type, index, key, value) {
+      if (key === 'price' || key === 'pricegros' || key === 'qty') value = parseFloat(value) || 0;
+      data[type].stock[index][key] = value;
+      sortStock(type);
+      saveData(); updateUI(type); remplirProduitsVente();
+    }
+
+    function deleteProduct(type, name) {
+      data[type].stock = data[type].stock.filter(p => p.name !== name);
+      saveData(); updateUI(type); remplirProduitsVente();
+    }
+
+    function exportExcel(type) {
+      const table = document.getElementById(`${type}-inventaire`);
+      const wb = XLSX.utils.table_to_book(table, {sheet: "Feuille1"});
+      XLSX.writeFile(wb, `${type}_inventaire.xlsx`);
+    }
+
+    // ------------------- VENTES ------------------
+    function remplirProduitsVente() {
+      const select = document.getElementById('vente-produit');
+      select.innerHTML = '';
+      ['boisson','supermarche'].forEach(type => {
+        data[type].stock.forEach(p => {
+          select.innerHTML += `<option value="${type}:${p.name}">${p.name} (${type}) - ${p.price} FCFA</option>`;
+        });
+      });
+    }
+
+    function searchVente() {
+      const query = document.getElementById('vente-search').value.toLowerCase();
+      const select = document.getElementById('vente-produit');
+      select.querySelectorAll('option').forEach(opt => {
+        opt.style.display = opt.textContent.toLowerCase().includes(query) ? '' : 'none';
+      });
+    }
+
+    function ajouterPanier() {
+      const produit = document.getElementById('vente-produit').value;
+      const qty = parseInt(document.getElementById('vente-qty').value);
+      if (!produit || isNaN(qty) || qty <= 0) return alert("Sélectionnez un produit et une quantité");
+      const [type, name] = produit.split(':');
+      const prod = data[type].stock.find(p => p.name === name);
+      if (!prod || prod.qty < qty) return alert("Stock insuffisant");
+      panier.push({ type, name, qty, price: prod.price });
+      updatePanier();
+    }
+
+    function updatePanier() {
+      const table = document.querySelector('#panier-table tbody');
+      table.innerHTML = '';
+      let total = 0;
+      panier.forEach((p, i) => {
+        const t = p.price * p.qty;
+        total += t;
+        table.innerHTML += `<tr><td>${p.name}</td><td>${p.qty}</td><td>${p.price}</td><td>${t}</td><td><button onclick="removePanier(${i})">X</button></td></tr>`;
+      });
+      document.getElementById('panier-total').textContent = `Total TTC: ${total} FCFA`;
+    }
+
+    function removePanier(i) { panier.splice(i, 1); updatePanier(); }
+
+    function validerVente() {
+      if (panier.length === 0) return alert("Panier vide");
+      const mode = document.getElementById('vente-mode').value;
+      const date = new Date().toLocaleString();
+      panier.forEach(item => {
+        const prod = data[item.type].stock.find(p => p.name === item.name);
+        prod.qty -= item.qty;
+        data.ventes.push({ date, name: item.name, qty: item.qty, price: item.price, total: item.qty * item.price, mode });
+      });
+      panier = [];
+      saveData(); updateUI('boisson'); updateUI('supermarche'); updatePanier(); updateRapport();
+    }
+
+    function updateRapport() {
+      const tbody = document.querySelector('#rapport-table tbody');
+      tbody.innerHTML = '';
+      let total = 0;
+      data.ventes.sort((a,b)=>a.mode.localeCompare(b.mode));
+      data.ventes.forEach(v => {
+        total += v.total;
+        tbody.innerHTML += `<tr><td>${v.date}</td><td>${v.name}</td><td>${v.qty}</td><td>${v.price}</td><td>${v.total}</td><td>${v.mode}</td></tr>`;
+      });
+      document.getElementById('rapport-total').textContent = `Total Ventes: ${total} FCFA`;
+    }
+
+    function searchTable(type) {
+      const query = document.getElementById(`${type[0]}-search`).value.toLowerCase();
+      document.querySelectorAll(`#${type}-stock tbody tr`).forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+      });
+    }
+
+    function searchRapport() {
+      const query = document.getElementById('search-rapport').value.toLowerCase();
+      document.querySelectorAll('#rapport-table tbody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+      });
+    }
+
+    function imprimerRecu() {
+      const recu = document.getElementById('recu');
+      recu.innerHTML = `<h3>Reçu</h3>${document.querySelector('#panier-table').outerHTML}`;
+      window.print();
+    }
+
+    function exportAllPDF() {
+      html2canvas(document.body).then(canvas => {
+        const img = canvas.toDataURL('image/png');
+        const pdf = new jspdf.jsPDF();
+        pdf.addImage(img, 'PNG', 10, 10, 190, 0);
+        pdf.save('rapport.pdf');
+      });
+    }
+
+    remplirProduitsVente();
+    updateUI('boisson'); updateUI('supermarche'); updateRapport();
+    if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark');
+  </script>
+</body>
+</html>
